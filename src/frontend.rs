@@ -1,4 +1,4 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Token {
@@ -71,20 +71,41 @@ fn lex(source: &str) -> Result<Vec<Token>> {
     while i < bytes.len() {
         match bytes[i] {
             b' ' | b'\t' | b'\r' | b'\n' => i += 1,
-            b'(' => { out.push(Token::LParen); i += 1; }
-            b')' => { out.push(Token::RParen); i += 1; }
-            b'{' => { out.push(Token::LBrace); i += 1; }
-            b'}' => { out.push(Token::RBrace); i += 1; }
-            b';' => { out.push(Token::Semi); i += 1; }
+            b'(' => {
+                out.push(Token::LParen);
+                i += 1;
+            }
+            b')' => {
+                out.push(Token::RParen);
+                i += 1;
+            }
+            b'{' => {
+                out.push(Token::LBrace);
+                i += 1;
+            }
+            b'}' => {
+                out.push(Token::RBrace);
+                i += 1;
+            }
+            b';' => {
+                out.push(Token::Semi);
+                i += 1;
+            }
             b'0'..=b'9' => {
                 let start = i;
-                while i < bytes.len() && bytes[i].is_ascii_digit() { i += 1; }
-                let value = source[start..i].parse().context("invalid integer literal")?;
+                while i < bytes.len() && bytes[i].is_ascii_digit() {
+                    i += 1;
+                }
+                let value = source[start..i]
+                    .parse()
+                    .context("invalid integer literal")?;
                 out.push(Token::Number(value));
             }
             b'a'..=b'z' | b'A'..=b'Z' | b'_' => {
                 let start = i;
-                while i < bytes.len() && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_') { i += 1; }
+                while i < bytes.len() && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_') {
+                    i += 1;
+                }
                 out.push(match &source[start..i] {
                     "int" => Token::Int,
                     "void" => Token::Void,
