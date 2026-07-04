@@ -10,6 +10,9 @@ on:
 permissions:
   contents: read
 
+env:
+  CARGO_TERM_COLOR: never
+
 jobs:
   test:
     name: Linux / Rust stable
@@ -19,38 +22,42 @@ jobs:
 
     steps:
       - name: Install system toolchain
+        shell: bash
         run: |
-          apt-get update
-          apt-get install -y --no-install-recommends \
-            build-essential \
-            ca-certificates \
-            git
+          set -o pipefail
+          log=$(mktemp)
+          if ! { apt-get update -qq && apt-get install -y -qq --no-install-recommends build-essential ca-certificates git; } >"$log" 2>&1; then
+            cat "$log"
+            exit 1
+          fi
+          rm -f "$log"
           rm -rf /var/lib/apt/lists/*
 
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Show toolchain versions
-        run: |
-          rustc --version
-          cargo --version
-          cc --version
-
       - name: Install Rust components
+        shell: bash
         run: |
-          rustup component add rustfmt clippy
+          set -o pipefail
+          log=$(mktemp)
+          if ! rustup component add rustfmt clippy >"$log" 2>&1; then
+            cat "$log"
+            exit 1
+          fi
+          rm -f "$log"
 
       - name: Check formatting
         run: cargo fmt --all -- --check
 
       - name: Run Clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --quiet --all-targets --all-features -- -D warnings
 
       - name: Run unit tests
-        run: cargo test --all-targets --all-features --locked
+        run: cargo test --quiet --all-targets --all-features --locked
 
       - name: Build NCC
-        run: cargo build --locked
+        run: cargo build --quiet --locked
 
       - name: Compile first C program to object code
         run: |
@@ -59,7 +66,7 @@ jobs:
               return 42;
           }
           EOF
-          cargo run --locked -- /tmp/ncc-smoke.c -o /tmp/ncc-smoke.o
+          cargo run --quiet --locked -- /tmp/ncc-smoke.c -o /tmp/ncc-smoke.o
           test -s /tmp/ncc-smoke.o
 
       - name: Link generated object
@@ -73,7 +80,6 @@ jobs:
           status=$?
           set -e
           if [ "$status" -ne 42 ]; then
-            echo "expected exit code 42, got $status"
+            echo "error: expected exit code 42, got $status" >&2
             exit 1
           fi
-          echo "NCC smoke test passed with exit code 42"
