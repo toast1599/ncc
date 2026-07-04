@@ -73,27 +73,46 @@ jobs:
       - name: Build NCC
         run: cargo build --quiet --locked
 
-      - name: Compile arithmetic C program to object code
-        run: |
-          cat > /tmp/ncc-smoke.c <<'EOF'
-          int main(void) {
-              return -(2 + 3) * 4 + 62;
-          }
-          EOF
-          cargo run --quiet --locked -- /tmp/ncc-smoke.c -o /tmp/ncc-smoke.o
-          test -s /tmp/ncc-smoke.o
-
-      - name: Link generated object
-        run: cc /tmp/ncc-smoke.o -o /tmp/ncc-smoke
-
-      - name: Execute generated program and verify exit code
+      - name: Test supported C expressions end to end
         shell: bash
         run: |
-          set +e
-          /tmp/ncc-smoke
-          status=$?
-          set -e
-          if [ "$status" -ne 42 ]; then
-            echo "error: expected exit code 42, got $status" >&2
-            exit 1
-          fi
+          set -euo pipefail
+
+          run_case() {
+            name=$1
+            expr=$2
+            expected=$3
+            src="/tmp/ncc-${name}.c"
+            obj="/tmp/ncc-${name}.o"
+            exe="/tmp/ncc-${name}"
+
+            printf 'int main(void) { return %s; }\n' "$expr" > "$src"
+            cargo run --quiet --locked -- "$src" -o "$obj"
+            test -s "$obj"
+            cc "$obj" -o "$exe"
+
+            set +e
+            "$exe"
+            status=$?
+            set -e
+
+            if [ "$status" -ne "$expected" ]; then
+              echo "error: $name: expression '$expr' expected exit code $expected, got $status" >&2
+              exit 1
+            fi
+          }
+
+          run_case literal '42' 42
+          run_case addition '40 + 2' 42
+          run_case subtraction '50 - 8' 42
+          run_case multiplication '6 * 7' 42
+          run_case division '84 / 2' 42
+          run_case remainder '92 % 50' 42
+          run_case precedence '2 + 10 * 4' 42
+          run_case parentheses '(2 + 5) * 6' 42
+          run_case unary_minus '-(2 + 3) * 4 + 62' 42
+          run_case left_assoc_sub '50 - 5 - 3' 42
+          run_case left_assoc_div '168 / 2 / 2' 42
+          run_case signed_division '-84 / 2 + 84' 42
+          run_case signed_remainder '-8 % 5 + 45' 42
+          run_case combined '100 - 6 * 9 + 8 / 2 - 16 % 7 - 6' 42
