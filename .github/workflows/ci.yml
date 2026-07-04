@@ -125,3 +125,7 @@ jobs:
           run_case greater_equal '42 >= 42' 1
           run_case comparison_precedence '1 + 2 < 4 == 1' 1
           run_case signed_comparison '-3 < -2' 1
+          run_case logical_not_zero '!0' 1
+          run_case logical_not_nonzero '!42' 0
+          run_case double_logical_not '!!42' 1
+          run_case logical_not_precedence '!1 == 0' 1
