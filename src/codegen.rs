@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use cranelift_codegen::ir::{AbiParam, InstBuilder, UserFuncName, types};
+use cranelift_codegen::ir::{AbiParam, InstBuilder, UserFuncName, Value, types};
 use cranelift_codegen::isa;
 use cranelift_codegen::settings::{self, Configurable};
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext};
@@ -7,7 +7,7 @@ use cranelift_module::{Linkage, Module, default_libcall_names};
 use cranelift_object::{ObjectBuilder, ObjectModule};
 use target_lexicon::Triple;
 
-use crate::frontend::Function;
+use crate::frontend::{Expr, Function};
 
 pub fn emit_object(function: &Function) -> Result<Vec<u8>> {
     let triple = Triple::host();
@@ -27,7 +27,7 @@ pub fn emit_object(function: &Function) -> Result<Vec<u8>> {
         let entry = b.create_block();
         b.switch_to_block(entry);
         b.seal_block(entry);
-        let value = b.ins().iconst(types::I32, function.return_value);
+        let value = lower_expr(&function.return_value, &mut b);
         b.ins().return_(&[value]);
         b.finalize();
     }
@@ -37,4 +37,34 @@ pub fn emit_object(function: &Function) -> Result<Vec<u8>> {
     module.clear_context(&mut ctx);
     let product = module.finish();
     product.emit().context("failed to emit object file")
+}
+
+fn lower_expr(expr: &Expr, b: &mut FunctionBuilder<'_>) -> Value {
+    match expr {
+        Expr::Integer(value) => b.ins().iconst(types::I32, *value),
+        Expr::Neg(inner) => {
+            let value = lower_expr(inner, b);
+            b.ins().ineg(value)
+        }
+        Expr::Add(lhs, rhs) => {
+            let lhs = lower_expr(lhs, b);
+            let rhs = lower_expr(rhs, b);
+            b.ins().iadd(lhs, rhs)
+        }
+        Expr::Sub(lhs, rhs) => {
+            let lhs = lower_expr(lhs, b);
+            let rhs = lower_expr(rhs, b);
+            b.ins().isub(lhs, rhs)
+        }
+        Expr::Mul(lhs, rhs) => {
+            let lhs = lower_expr(lhs, b);
+            let rhs = lower_expr(rhs, b);
+            b.ins().imul(lhs, rhs)
+        }
+        Expr::Div(lhs, rhs) => {
+            let lhs = lower_expr(lhs, b);
+            let rhs = lower_expr(rhs, b);
+            b.ins().sdiv(lhs, rhs)
+        }
+    }
 }
