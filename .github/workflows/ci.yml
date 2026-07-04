@@ -73,11 +73,11 @@ jobs:
       - name: Build NCC
         run: cargo build --quiet --locked
 
-      - name: Compile first C program to object code
+      - name: Compile arithmetic C program to object code
         run: |
           cat > /tmp/ncc-smoke.c <<'EOF'
           int main(void) {
-              return 42;
+              return -(2 + 3) * 4 + 62;
           }
           EOF
           cargo run --quiet --locked -- /tmp/ncc-smoke.c -o /tmp/ncc-smoke.o
