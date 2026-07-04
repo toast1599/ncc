@@ -24,7 +24,6 @@ jobs:
       - name: Install system toolchain
         shell: bash
         run: |
-          set -o pipefail
           log=$(mktemp)
           if ! { apt-get update -qq && apt-get install -y -qq --no-install-recommends build-essential ca-certificates git; } >"$log" 2>&1; then
             cat "$log"
@@ -39,7 +38,6 @@ jobs:
       - name: Install Rust components
         shell: bash
         run: |
-          set -o pipefail
           log=$(mktemp)
           if ! rustup component add rustfmt clippy >"$log" 2>&1; then
             cat "$log"
@@ -51,7 +49,15 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Run Clippy
-        run: cargo clippy --quiet --all-targets --all-features -- -D warnings
+        shell: bash
+        run: |
+          log=$(mktemp)
+          if ! cargo clippy --quiet --all-targets --all-features -- -D warnings >"$log" 2>&1; then
+            echo "::error::Clippy failed"
+            grep -E '^(error|warning)(\[|:)|^  --> |^   --> |^help:|^note:' "$log" || cat "$log"
+            exit 1
+          fi
+          rm -f "$log"
 
       - name: Run unit tests
         run: cargo test --quiet --all-targets --all-features --locked
