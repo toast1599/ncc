@@ -66,5 +66,10 @@ fn lower_expr(expr: &Expr, b: &mut FunctionBuilder<'_>) -> Value {
             let rhs = lower_expr(rhs, b);
             b.ins().sdiv(lhs, rhs)
         }
+        Expr::Rem(lhs, rhs) => {
+            let lhs = lower_expr(lhs, b);
+            let rhs = lower_expr(rhs, b);
+            b.ins().srem(lhs, rhs)
+        }
     }
 }
