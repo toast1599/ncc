@@ -50,6 +50,11 @@ fn lower_expr(expr: &Expr, b: &mut FunctionBuilder<'_>) -> Value {
             let v = lower_expr(x, b);
             b.ins().ineg(v)
         }
+        Expr::Not(x) => {
+            let v = lower_expr(x, b);
+            let is_zero = b.ins().icmp_imm(IntCC::Equal, v, 0);
+            b.ins().uextend(types::I32, is_zero)
+        }
         Expr::Add(l, r) => bin(l, r, b, |b, l, r| b.ins().iadd(l, r)),
         Expr::Sub(l, r) => bin(l, r, b, |b, l, r| b.ins().isub(l, r)),
         Expr::Mul(l, r) => bin(l, r, b, |b, l, r| b.ins().imul(l, r)),
