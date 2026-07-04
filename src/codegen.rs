@@ -35,7 +35,6 @@ pub fn emit_object(function: &Function) -> Result<Vec<u8>> {
     let id = module.declare_function(&function.name, Linkage::Export, &ctx.func.signature)?;
     module.define_function(id, &mut ctx)?;
     module.clear_context(&mut ctx);
-    module.finalize_definitions()?;
     let product = module.finish();
     product.emit().context("failed to emit object file")
 }
