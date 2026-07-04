@@ -116,3 +116,12 @@ jobs:
           run_case signed_division '-84 / 2 + 84' 42
           run_case signed_remainder '-8 % 5 + 45' 42
           run_case combined '100 - 6 * 9 + 8 / 2 - 16 % 7 - 6' 42
+          run_case equal_true '42 == 42' 1
+          run_case equal_false '42 == 41' 0
+          run_case not_equal '42 != 41' 1
+          run_case less_than '41 < 42' 1
+          run_case less_equal '42 <= 42' 1
+          run_case greater_than '43 > 42' 1
+          run_case greater_equal '42 >= 42' 1
+          run_case comparison_precedence '1 + 2 < 4 == 1' 1
+          run_case signed_comparison '-3 < -2' 1
