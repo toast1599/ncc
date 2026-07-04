@@ -1,9 +1,9 @@
 use anyhow::{Context, Result};
-use cranelift_codegen::ir::{types, AbiParam, InstBuilder, UserFuncName};
+use cranelift_codegen::ir::{AbiParam, InstBuilder, UserFuncName, types};
 use cranelift_codegen::isa;
 use cranelift_codegen::settings::{self, Configurable};
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext};
-use cranelift_module::{default_libcall_names, Linkage, Module};
+use cranelift_module::{Linkage, Module, default_libcall_names};
 use cranelift_object::{ObjectBuilder, ObjectModule};
 use target_lexicon::Triple;
 
@@ -13,8 +13,7 @@ pub fn emit_object(function: &Function) -> Result<Vec<u8>> {
     let triple = Triple::host();
     let mut flags = settings::builder();
     flags.set("is_pic", "true")?;
-    let isa = isa::lookup(triple.clone())?
-        .finish(settings::Flags::new(flags))?;
+    let isa = isa::lookup(triple.clone())?.finish(settings::Flags::new(flags))?;
     let builder = ObjectBuilder::new(isa, "ncc", default_libcall_names())?;
     let mut module = ObjectModule::new(builder);
 
