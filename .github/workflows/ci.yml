@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Linux / Rust stable
+    runs-on: ubuntu-latest
+    container:
+      image: rust:latest
+
+    steps:
+      - name: Install system toolchain
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential \
+            ca-certificates \
+            git
+          rm -rf /var/lib/apt/lists/*
+
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Show toolchain versions
+        run: |
+          rustc --version
+          cargo --version
+          cc --version
+
+      - name: Install Rust components
+        run: |
+          rustup component add rustfmt clippy
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Run Clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Run unit tests
+        run: cargo test --all-targets --all-features --locked
+
+      - name: Build NCC
+        run: cargo build --locked
+
+      - name: Compile first C program to object code
+        run: |
+          cat > /tmp/ncc-smoke.c <<'EOF'
+          int main(void) {
+              return 42;
+          }
+          EOF
+          cargo run --locked -- /tmp/ncc-smoke.c -o /tmp/ncc-smoke.o
+          test -s /tmp/ncc-smoke.o
+
+      - name: Link generated object
+        run: cc /tmp/ncc-smoke.o -o /tmp/ncc-smoke
+
+      - name: Execute generated program and verify exit code
+        shell: bash
+        run: |
+          set +e
+          /tmp/ncc-smoke
+          status=$?
+          set -e
+          if [ "$status" -ne 42 ]; then
+            echo "expected exit code 42, got $status"
+            exit 1
+          fi
+          echo "NCC smoke test passed with exit code 42"
