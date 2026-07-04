@@ -49,15 +49,23 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Run Clippy
+        id: clippy
         shell: bash
         run: |
-          log=$(mktemp)
-          if ! cargo clippy --quiet --all-targets --all-features -- -D warnings >"$log" 2>&1; then
-            echo "::error::Clippy failed"
-            grep -E '^(error|warning)(\[|:)|^  --> |^   --> |^help:|^note:' "$log" || cat "$log"
+          if ! cargo clippy --quiet --all-targets --all-features -- -D warnings > /tmp/clippy.log 2>&1; then
+            echo "::error::Clippy failed; diagnostics uploaded as clippy-diagnostics"
             exit 1
           fi
-          rm -f "$log"
+          rm -f /tmp/clippy.log
+
+      - name: Upload Clippy diagnostics
+        if: failure() && steps.clippy.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: clippy-diagnostics
+          path: /tmp/clippy.log
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Run unit tests
         run: cargo test --quiet --all-targets --all-features --locked
