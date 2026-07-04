@@ -11,6 +11,7 @@ enum Token {
     Minus,
     Star,
     Slash,
+    Percent,
     LParen,
     RParen,
     LBrace,
@@ -27,6 +28,7 @@ pub enum Expr {
     Sub(Box<Expr>, Box<Expr>),
     Mul(Box<Expr>, Box<Expr>),
     Div(Box<Expr>, Box<Expr>),
+    Rem(Box<Expr>, Box<Expr>),
 }
 
 pub struct Function {
@@ -112,6 +114,10 @@ impl Parser {
                     self.bump();
                     Expr::Div(Box::new(expr), Box::new(self.parse_unary()?))
                 }
+                Token::Percent => {
+                    self.bump();
+                    Expr::Rem(Box::new(expr), Box::new(self.parse_unary()?))
+                }
                 _ => break,
             };
         }
@@ -146,24 +152,61 @@ fn lex(source: &str) -> Result<Vec<Token>> {
     while i < bytes.len() {
         match bytes[i] {
             b' ' | b'\t' | b'\r' | b'\n' => i += 1,
-            b'+' => { out.push(Token::Plus); i += 1; }
-            b'-' => { out.push(Token::Minus); i += 1; }
-            b'*' => { out.push(Token::Star); i += 1; }
-            b'/' => { out.push(Token::Slash); i += 1; }
-            b'(' => { out.push(Token::LParen); i += 1; }
-            b')' => { out.push(Token::RParen); i += 1; }
-            b'{' => { out.push(Token::LBrace); i += 1; }
-            b'}' => { out.push(Token::RBrace); i += 1; }
-            b';' => { out.push(Token::Semi); i += 1; }
+            b'+' => {
+                out.push(Token::Plus);
+                i += 1;
+            }
+            b'-' => {
+                out.push(Token::Minus);
+                i += 1;
+            }
+            b'*' => {
+                out.push(Token::Star);
+                i += 1;
+            }
+            b'/' => {
+                out.push(Token::Slash);
+                i += 1;
+            }
+            b'%' => {
+                out.push(Token::Percent);
+                i += 1;
+            }
+            b'(' => {
+                out.push(Token::LParen);
+                i += 1;
+            }
+            b')' => {
+                out.push(Token::RParen);
+                i += 1;
+            }
+            b'{' => {
+                out.push(Token::LBrace);
+                i += 1;
+            }
+            b'}' => {
+                out.push(Token::RBrace);
+                i += 1;
+            }
+            b';' => {
+                out.push(Token::Semi);
+                i += 1;
+            }
             b'0'..=b'9' => {
                 let start = i;
-                while i < bytes.len() && bytes[i].is_ascii_digit() { i += 1; }
-                let value = source[start..i].parse().context("invalid integer literal")?;
+                while i < bytes.len() && bytes[i].is_ascii_digit() {
+                    i += 1;
+                }
+                let value = source[start..i]
+                    .parse()
+                    .context("invalid integer literal")?;
                 out.push(Token::Number(value));
             }
             b'a'..=b'z' | b'A'..=b'Z' | b'_' => {
                 let start = i;
-                while i < bytes.len() && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_') { i += 1; }
+                while i < bytes.len() && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_') {
+                    i += 1;
+                }
                 out.push(match &source[start..i] {
                     "int" => Token::Int,
                     "void" => Token::Void,
@@ -196,7 +239,10 @@ mod tests {
             f.return_value,
             Expr::Add(
                 Box::new(Expr::Integer(2)),
-                Box::new(Expr::Mul(Box::new(Expr::Integer(3)), Box::new(Expr::Integer(4))))
+                Box::new(Expr::Mul(
+                    Box::new(Expr::Integer(3)),
+                    Box::new(Expr::Integer(4))
+                ))
             )
         );
     }
@@ -210,6 +256,21 @@ mod tests {
                 Box::new(Expr::Integer(2)),
                 Box::new(Expr::Integer(3))
             )))
+        );
+    }
+
+    #[test]
+    fn parses_remainder_with_multiplicative_precedence() {
+        let f = parse("int main(void) { return 40 + 8 % 3; }").unwrap();
+        assert_eq!(
+            f.return_value,
+            Expr::Add(
+                Box::new(Expr::Integer(40)),
+                Box::new(Expr::Rem(
+                    Box::new(Expr::Integer(8)),
+                    Box::new(Expr::Integer(3))
+                ))
+            )
         );
     }
 }
