@@ -143,3 +143,9 @@ jobs:
           run_case bitwise_xor '40 ^ 2' 42
           run_case bitwise_or '40 | 2' 42
           run_case bitwise_precedence '32 | 8 ^ 3 & 6' 42
+          run_case logical_and_true '2 && 3' 1
+          run_case logical_and_false '0 && 3' 0
+          run_case logical_or_true '0 || 7' 1
+          run_case logical_precedence '1 || 0 && 0' 1
+          run_case short_circuit_and '0 && (1 / 0)' 0
+          run_case short_circuit_or '1 || (1 / 0)' 1
