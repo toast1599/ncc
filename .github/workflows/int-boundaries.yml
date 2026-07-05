@@ -1,0 +1,35 @@
+name: Integer boundary coverage
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  int-boundaries:
+    runs-on: ubuntu-latest
+    container:
+      image: rust:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build NCC
+        run: cargo build --quiet --locked
+      - name: Accept largest supported int constant
+        shell: bash
+        run: |
+          printf 'int main(void) { return 2147483647; }\n' > /tmp/max-int.c
+          cargo run --quiet --locked -- /tmp/max-int.c -o /tmp/max-int.o
+          test -s /tmp/max-int.o
+      - name: Reject constants outside supported int range
+        shell: bash
+        run: |
+          printf 'int main(void) { return 2147483648; }\n' > /tmp/too-large.c
+          if cargo run --quiet --locked -- /tmp/too-large.c -o /tmp/too-large.o > /tmp/ncc.log 2>&1; then
+            echo 'error: NCC accepted an integer constant outside its supported 32-bit int range' >&2
+            exit 1
+          fi
+          grep -F "supported 32-bit int range" /tmp/ncc.log
