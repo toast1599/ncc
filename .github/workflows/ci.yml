@@ -110,6 +110,9 @@ jobs:
           run_case remainder '92 % 50' 42
           run_case precedence '2 + 10 * 4' 42
           run_case parentheses '(2 + 5) * 6' 42
+          run_case unary_plus '+42' 42
+          run_case repeated_unary_plus '+++42' 42
+          run_case mixed_unary_plus '+-+(-42)' 42
           run_case unary_minus '-(2 + 3) * 4 + 62' 42
           run_case left_assoc_sub '50 - 5 - 3' 42
           run_case left_assoc_div '168 / 2 / 2' 42
