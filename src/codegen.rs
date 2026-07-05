@@ -1,11 +1,11 @@
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use cranelift_codegen::ir::{
-    AbiParam, InstBuilder, UserFuncName, Value, condcodes::IntCC, types,
+    condcodes::IntCC, types, AbiParam, InstBuilder, UserFuncName, Value,
 };
 use cranelift_codegen::isa;
 use cranelift_codegen::settings::{self, Configurable};
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext};
-use cranelift_module::{Linkage, Module, default_libcall_names};
+use cranelift_module::{default_libcall_names, Linkage, Module};
 use cranelift_object::{ObjectBuilder, ObjectModule};
 use target_lexicon::Triple;
 
@@ -30,7 +30,7 @@ pub fn emit_object(function: &Function) -> Result<Vec<u8>> {
         let entry = b.create_block();
         b.switch_to_block(entry);
         b.seal_block(entry);
-        let value = lower_expr(&function.return_value, &mut b);
+        let value = lower_expr(&function.return_value, &mut b)?;
         b.ins().return_(&[value]);
         b.finalize();
     }
@@ -43,34 +43,39 @@ pub fn emit_object(function: &Function) -> Result<Vec<u8>> {
         .context("failed to emit object file")
 }
 
-fn lower_expr(expr: &Expr, b: &mut FunctionBuilder<'_>) -> Value {
-    match expr {
-        Expr::Integer(v) => b.ins().iconst(types::I32, *v),
+fn lower_expr(expr: &Expr, b: &mut FunctionBuilder<'_>) -> Result<Value> {
+    Ok(match expr {
+        Expr::Integer(v) => {
+            if i32::try_from(*v).is_err() {
+                bail!("integer constant {v} is outside NCC's supported 32-bit int range");
+            }
+            b.ins().iconst(types::I32, *v)
+        }
         Expr::Neg(x) => {
-            let v = lower_expr(x, b);
+            let v = lower_expr(x, b)?;
             b.ins().ineg(v)
         }
         Expr::Not(x) => {
-            let v = lower_expr(x, b);
+            let v = lower_expr(x, b)?;
             let is_zero = b.ins().icmp_imm(IntCC::Equal, v, 0);
             b.ins().uextend(types::I32, is_zero)
         }
         Expr::BitNot(x) => {
-            let v = lower_expr(x, b);
+            let v = lower_expr(x, b)?;
             b.ins().bnot(v)
         }
-        Expr::Add(l, r) => bin(l, r, b, |b, l, r| b.ins().iadd(l, r)),
-        Expr::Sub(l, r) => bin(l, r, b, |b, l, r| b.ins().isub(l, r)),
-        Expr::Mul(l, r) => bin(l, r, b, |b, l, r| b.ins().imul(l, r)),
-        Expr::Div(l, r) => bin(l, r, b, |b, l, r| b.ins().sdiv(l, r)),
-        Expr::Rem(l, r) => bin(l, r, b, |b, l, r| b.ins().srem(l, r)),
-        Expr::Eq(l, r) => cmp(IntCC::Equal, l, r, b),
-        Expr::Ne(l, r) => cmp(IntCC::NotEqual, l, r, b),
-        Expr::Lt(l, r) => cmp(IntCC::SignedLessThan, l, r, b),
-        Expr::Le(l, r) => cmp(IntCC::SignedLessThanOrEqual, l, r, b),
-        Expr::Gt(l, r) => cmp(IntCC::SignedGreaterThan, l, r, b),
-        Expr::Ge(l, r) => cmp(IntCC::SignedGreaterThanOrEqual, l, r, b),
-    }
+        Expr::Add(l, r) => bin(l, r, b, |b, l, r| b.ins().iadd(l, r))?,
+        Expr::Sub(l, r) => bin(l, r, b, |b, l, r| b.ins().isub(l, r))?,
+        Expr::Mul(l, r) => bin(l, r, b, |b, l, r| b.ins().imul(l, r))?,
+        Expr::Div(l, r) => bin(l, r, b, |b, l, r| b.ins().sdiv(l, r))?,
+        Expr::Rem(l, r) => bin(l, r, b, |b, l, r| b.ins().srem(l, r))?,
+        Expr::Eq(l, r) => cmp(IntCC::Equal, l, r, b)?,
+        Expr::Ne(l, r) => cmp(IntCC::NotEqual, l, r, b)?,
+        Expr::Lt(l, r) => cmp(IntCC::SignedLessThan, l, r, b)?,
+        Expr::Le(l, r) => cmp(IntCC::SignedLessThanOrEqual, l, r, b)?,
+        Expr::Gt(l, r) => cmp(IntCC::SignedGreaterThan, l, r, b)?,
+        Expr::Ge(l, r) => cmp(IntCC::SignedGreaterThanOrEqual, l, r, b)?,
+    })
 }
 
 fn bin<F: FnOnce(&mut FunctionBuilder<'_>, Value, Value) -> Value>(
@@ -78,15 +83,30 @@ fn bin<F: FnOnce(&mut FunctionBuilder<'_>, Value, Value) -> Value>(
     r: &Expr,
     b: &mut FunctionBuilder<'_>,
     f: F,
-) -> Value {
-    let l = lower_expr(l, b);
-    let r = lower_expr(r, b);
-    f(b, l, r)
+) -> Result<Value> {
+    let l = lower_expr(l, b)?;
+    let r = lower_expr(r, b)?;
+    Ok(f(b, l, r))
 }
 
-fn cmp(cc: IntCC, l: &Expr, r: &Expr, b: &mut FunctionBuilder<'_>) -> Value {
-    let l = lower_expr(l, b);
-    let r = lower_expr(r, b);
+fn cmp(cc: IntCC, l: &Expr, r: &Expr, b: &mut FunctionBuilder<'_>) -> Result<Value> {
+    let l = lower_expr(l, b)?;
+    let r = lower_expr(r, b)?;
     let v = b.ins().icmp(cc, l, r);
-    b.ins().uextend(types::I32, v)
+    Ok(b.ins().uextend(types::I32, v))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rejects_integer_constants_outside_supported_int_range() {
+        let function = Function {
+            name: "main".to_owned(),
+            return_value: Expr::Integer(i64::from(i32::MAX) + 1),
+        };
+        let error = emit_object(&function).unwrap_err().to_string();
+        assert!(error.contains("supported 32-bit int range"));
+    }
 }
