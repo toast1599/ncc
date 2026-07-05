@@ -188,6 +188,10 @@ impl Parser {
 
     fn parse_unary(&mut self) -> Result<Expr> {
         match self.peek() {
+            Token::Plus => {
+                self.bump();
+                self.parse_unary()
+            }
             Token::Minus => {
                 self.bump();
                 Ok(Expr::Neg(Box::new(self.parse_unary()?)))
@@ -354,6 +358,12 @@ mod tests {
     fn parses_bitwise_complement() {
         let f = parse("int main(void) { return ~~42; }").unwrap();
         assert!(matches!(f.return_value, Expr::BitNot(_)));
+    }
+
+    #[test]
+    fn parses_unary_plus() {
+        let f = parse("int main(void) { return +++42; }").unwrap();
+        assert_eq!(f.return_value, Expr::Integer(42));
     }
 
     #[test]
