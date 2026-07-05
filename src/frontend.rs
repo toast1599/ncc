@@ -13,6 +13,7 @@ enum Token {
     Slash,
     Percent,
     Bang,
+    Tilde,
     EqEq,
     NotEq,
     Lt,
@@ -32,6 +33,7 @@ pub enum Expr {
     Integer(i64),
     Neg(Box<Expr>),
     Not(Box<Expr>),
+    BitNot(Box<Expr>),
     Add(Box<Expr>, Box<Expr>),
     Sub(Box<Expr>, Box<Expr>),
     Mul(Box<Expr>, Box<Expr>),
@@ -194,6 +196,10 @@ impl Parser {
                 self.bump();
                 Ok(Expr::Not(Box::new(self.parse_unary()?)))
             }
+            Token::Tilde => {
+                self.bump();
+                Ok(Expr::BitNot(Box::new(self.parse_unary()?)))
+            }
             _ => self.parse_primary(),
         }
     }
@@ -228,6 +234,10 @@ fn lex(source: &str) -> Result<Vec<Token>> {
             }
             b'!' => {
                 out.push(Token::Bang);
+                i += 1;
+            }
+            b'~' => {
+                out.push(Token::Tilde);
                 i += 1;
             }
             b'<' if b.get(i + 1) == Some(&b'=') => {
@@ -338,6 +348,12 @@ mod tests {
     fn parses_logical_not() {
         let f = parse("int main(void) { return !!42; }").unwrap();
         assert!(matches!(f.return_value, Expr::Not(_)));
+    }
+
+    #[test]
+    fn parses_bitwise_complement() {
+        let f = parse("int main(void) { return ~~42; }").unwrap();
+        assert!(matches!(f.return_value, Expr::BitNot(_)));
     }
 
     #[test]
