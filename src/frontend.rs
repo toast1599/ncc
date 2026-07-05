@@ -5,7 +5,7 @@ enum Token {
     Int, Void, Return, Ident(String), Number(i64),
     Plus, Minus, Star, Slash, Percent, Bang, Tilde,
     Amp, Caret, Pipe,
-    EqEq, NotEq, Lt, Le, Gt, Ge,
+    EqEq, NotEq, Lt, Le, Gt, Ge, Shl, Shr,
     LParen, RParen, LBrace, RBrace, Semi, Eof,
 }
 
@@ -14,6 +14,7 @@ pub enum Expr {
     Integer(i64), Neg(Box<Expr>), Not(Box<Expr>), BitNot(Box<Expr>),
     Add(Box<Expr>, Box<Expr>), Sub(Box<Expr>, Box<Expr>),
     Mul(Box<Expr>, Box<Expr>), Div(Box<Expr>, Box<Expr>), Rem(Box<Expr>, Box<Expr>),
+    Shl(Box<Expr>, Box<Expr>), Shr(Box<Expr>, Box<Expr>),
     Eq(Box<Expr>, Box<Expr>), Ne(Box<Expr>, Box<Expr>),
     Lt(Box<Expr>, Box<Expr>), Le(Box<Expr>, Box<Expr>),
     Gt(Box<Expr>, Box<Expr>), Ge(Box<Expr>, Box<Expr>),
@@ -71,12 +72,21 @@ impl Parser {
         Ok(e)
     }
     fn parse_relational(&mut self) -> Result<Expr> {
+        let mut e = self.parse_shift()?;
+        loop { e = match self.peek() {
+            Token::Lt => { self.bump(); Expr::Lt(Box::new(e), Box::new(self.parse_shift()?)) }
+            Token::Le => { self.bump(); Expr::Le(Box::new(e), Box::new(self.parse_shift()?)) }
+            Token::Gt => { self.bump(); Expr::Gt(Box::new(e), Box::new(self.parse_shift()?)) }
+            Token::Ge => { self.bump(); Expr::Ge(Box::new(e), Box::new(self.parse_shift()?)) }
+            _ => break,
+        }; }
+        Ok(e)
+    }
+    fn parse_shift(&mut self) -> Result<Expr> {
         let mut e = self.parse_additive()?;
         loop { e = match self.peek() {
-            Token::Lt => { self.bump(); Expr::Lt(Box::new(e), Box::new(self.parse_additive()?)) }
-            Token::Le => { self.bump(); Expr::Le(Box::new(e), Box::new(self.parse_additive()?)) }
-            Token::Gt => { self.bump(); Expr::Gt(Box::new(e), Box::new(self.parse_additive()?)) }
-            Token::Ge => { self.bump(); Expr::Ge(Box::new(e), Box::new(self.parse_additive()?)) }
+            Token::Shl => { self.bump(); Expr::Shl(Box::new(e), Box::new(self.parse_additive()?)) }
+            Token::Shr => { self.bump(); Expr::Shr(Box::new(e), Box::new(self.parse_additive()?)) }
             _ => break,
         }; }
         Ok(e)
@@ -127,6 +137,8 @@ fn lex(source: &str) -> Result<Vec<Token>> {
             b'!' if b.get(i + 1) == Some(&b'=') => { out.push(Token::NotEq); i += 2; }
             b'<' if b.get(i + 1) == Some(&b'=') => { out.push(Token::Le); i += 2; }
             b'>' if b.get(i + 1) == Some(&b'=') => { out.push(Token::Ge); i += 2; }
+            b'<' if b.get(i + 1) == Some(&b'<') => { out.push(Token::Shl); i += 2; }
+            b'>' if b.get(i + 1) == Some(&b'>') => { out.push(Token::Shr); i += 2; }
             b'!' => { out.push(Token::Bang); i += 1; }
             b'~' => { out.push(Token::Tilde); i += 1; }
             b'&' => { out.push(Token::Amp); i += 1; }
@@ -167,6 +179,13 @@ mod tests {
     #[test] fn parses_bitwise_complement() { let f = parse("int main(void) { return ~~42; }").unwrap(); assert!(matches!(f.return_value, Expr::BitNot(_))); }
     #[test] fn parses_unary_plus() { let f = parse("int main(void) { return +++42; }").unwrap(); assert_eq!(f.return_value, Expr::Integer(42)); }
     #[test] fn comparison_precedence_is_c_like() { let f = parse("int main(void) { return 1 + 2 < 4 == 1; }").unwrap(); assert!(matches!(f.return_value, Expr::Eq(_, _))); }
+    #[test]
+    fn shift_precedence_is_c_like() {
+        let f = parse("int main(void) { return 1 + 2 << 3 < 25; }").unwrap();
+        assert!(matches!(f.return_value, Expr::Lt(_, _)));
+        let Expr::Lt(lhs, _) = f.return_value else { unreachable!() };
+        assert!(matches!(*lhs, Expr::Shl(_, _)));
+    }
     #[test]
     fn bitwise_precedence_is_c_like() {
         let f = parse("int main(void) { return 1 | 2 ^ 3 & 4 == 5; }").unwrap();
