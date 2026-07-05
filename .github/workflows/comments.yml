@@ -1,0 +1,52 @@
+name: Comment coverage
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  comments:
+    runs-on: ubuntu-latest
+    container:
+      image: rust:latest
+    steps:
+      - name: Install system toolchain
+        run: apt-get update -qq && apt-get install -y -qq --no-install-recommends build-essential ca-certificates git
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Build NCC
+        run: cargo build --quiet --locked
+      - name: Compile source containing comments
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/comments.c <<'EOF'
+          /* leading block comment */
+          int main(void) {
+            // line comment
+            return 40 /* embedded block comment */ + 2;
+          }
+          EOF
+          cargo run --quiet --locked -- /tmp/comments.c -o /tmp/comments.o
+          cc /tmp/comments.o -o /tmp/comments
+          set +e
+          /tmp/comments
+          status=$?
+          set -e
+          test "$status" -eq 42
+      - name: Reject unterminated block comment
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'int main(void) { return 42; /* missing end\n' > /tmp/bad-comment.c
+          if cargo run --quiet --locked -- /tmp/bad-comment.c -o /tmp/bad-comment.o > /tmp/ncc.err 2>&1; then
+            echo 'NCC unexpectedly accepted an unterminated block comment' >&2
+            exit 1
+          fi
+          grep -q 'unterminated block comment' /tmp/ncc.err
