@@ -133,6 +133,17 @@ fn lex(source: &str) -> Result<Vec<Token>> {
     while i < b.len() {
         match b[i] {
             b' ' | b'\t' | b'\r' | b'\n' => i += 1,
+            b'/' if b.get(i + 1) == Some(&b'/') => {
+                i += 2;
+                while i < b.len() && b[i] != b'\n' { i += 1; }
+            }
+            b'/' if b.get(i + 1) == Some(&b'*') => {
+                let start = i;
+                i += 2;
+                while i + 1 < b.len() && !(b[i] == b'*' && b[i + 1] == b'/') { i += 1; }
+                if i + 1 >= b.len() { bail!("unterminated block comment at offset {start}"); }
+                i += 2;
+            }
             b'=' if b.get(i + 1) == Some(&b'=') => { out.push(Token::EqEq); i += 2; }
             b'!' if b.get(i + 1) == Some(&b'=') => { out.push(Token::NotEq); i += 2; }
             b'<' if b.get(i + 1) == Some(&b'=') => { out.push(Token::Le); i += 2; }
@@ -192,5 +203,15 @@ mod tests {
         assert!(matches!(f.return_value, Expr::BitOr(_, _)));
         let Expr::BitOr(_, rhs) = f.return_value else { unreachable!() };
         assert!(matches!(*rhs, Expr::BitXor(_, _)));
+    }
+    #[test]
+    fn ignores_line_and_block_comments() {
+        let f = parse("/* before */ int main(void) { // explain\n return 40 /* gap */ + 2; }").unwrap();
+        assert!(matches!(f.return_value, Expr::Add(_, _)));
+    }
+    #[test]
+    fn rejects_unterminated_block_comment() {
+        let error = parse("int main(void) { return 42; /* missing end").unwrap_err().to_string();
+        assert!(error.contains("unterminated block comment"));
     }
 }
