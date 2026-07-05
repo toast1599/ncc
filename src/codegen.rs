@@ -74,7 +74,39 @@ fn lower_expr(expr: &Expr, b: &mut FunctionBuilder<'_>) -> Result<Value> {
         Expr::BitAnd(l, r) => bin(l, r, b, |b, l, r| b.ins().band(l, r))?,
         Expr::BitXor(l, r) => bin(l, r, b, |b, l, r| b.ins().bxor(l, r))?,
         Expr::BitOr(l, r) => bin(l, r, b, |b, l, r| b.ins().bor(l, r))?,
+        Expr::LogicalAnd(l, r) => lower_logical(l, r, false, b)?,
+        Expr::LogicalOr(l, r) => lower_logical(l, r, true, b)?,
     })
+}
+
+fn lower_logical(l: &Expr, r: &Expr, is_or: bool, b: &mut FunctionBuilder<'_>) -> Result<Value> {
+    let lhs = lower_expr(l, b)?;
+    let condition = b.ins().icmp_imm(IntCC::NotEqual, lhs, 0);
+    let rhs_block = b.create_block();
+    let merge_block = b.create_block();
+    b.append_block_param(merge_block, types::I32);
+    let short_value = b.ins().iconst(types::I32, if is_or { 1 } else { 0 });
+
+    if is_or {
+        b.ins().brif(condition, merge_block, &[short_value], rhs_block, &[]);
+    } else {
+        b.ins().brif(condition, rhs_block, &[], merge_block, &[short_value]);
+    }
+
+    b.seal_block(rhs_block);
+    b.switch_to_block(rhs_block);
+    let rhs = lower_expr(r, b)?;
+    let rhs = truthy(rhs, b);
+    b.ins().jump(merge_block, &[rhs]);
+
+    b.seal_block(merge_block);
+    b.switch_to_block(merge_block);
+    Ok(b.block_params(merge_block)[0])
+}
+
+fn truthy(value: Value, b: &mut FunctionBuilder<'_>) -> Value {
+    let nonzero = b.ins().icmp_imm(IntCC::NotEqual, value, 0);
+    b.ins().uextend(types::I32, nonzero)
 }
 
 fn bin<F: FnOnce(&mut FunctionBuilder<'_>, Value, Value) -> Value>(
@@ -127,6 +159,17 @@ mod tests {
             return_value: Expr::BitOr(
                 Box::new(Expr::Integer(32)),
                 Box::new(Expr::BitXor(Box::new(Expr::Integer(8)), Box::new(Expr::Integer(2)))),
+            ),
+        };
+        assert!(emit_object(&function).is_ok());
+    }
+    #[test]
+    fn lowers_nested_logical_expressions() {
+        let function = Function {
+            name: "main".to_owned(),
+            return_value: Expr::LogicalOr(
+                Box::new(Expr::Integer(0)),
+                Box::new(Expr::LogicalAnd(Box::new(Expr::Integer(2)), Box::new(Expr::Integer(3)))),
             ),
         };
         assert!(emit_object(&function).is_ok());
