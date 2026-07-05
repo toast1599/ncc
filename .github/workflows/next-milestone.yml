@@ -78,6 +78,8 @@ jobs:
           if marker not in s:
               raise SystemExit('CI literal marker missing')
           p.write_text(s.replace(marker, marker + addition, 1))
+      - name: Format generated changes
+        run: cargo fmt --all
       - run: cargo fmt --all -- --check
       - run: cargo clippy --all-targets --all-features -- -D warnings
       - run: cargo test --all-targets --all-features --locked
