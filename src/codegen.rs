@@ -63,6 +63,8 @@ fn lower_expr(expr: &Expr, b: &mut FunctionBuilder<'_>) -> Result<Value> {
         Expr::Mul(l, r) => bin(l, r, b, |b, l, r| b.ins().imul(l, r))?,
         Expr::Div(l, r) => bin(l, r, b, |b, l, r| b.ins().sdiv(l, r))?,
         Expr::Rem(l, r) => bin(l, r, b, |b, l, r| b.ins().srem(l, r))?,
+        Expr::Shl(l, r) => bin(l, r, b, |b, l, r| b.ins().ishl(l, r))?,
+        Expr::Shr(l, r) => bin(l, r, b, |b, l, r| b.ins().sshr(l, r))?,
         Expr::Eq(l, r) => cmp(IntCC::Equal, l, r, b)?,
         Expr::Ne(l, r) => cmp(IntCC::NotEqual, l, r, b)?,
         Expr::Lt(l, r) => cmp(IntCC::SignedLessThan, l, r, b)?,
@@ -105,6 +107,17 @@ mod tests {
     #[test]
     fn accepts_minimum_signed_32_bit_integer() {
         let function = Function { name: "main".to_owned(), return_value: Expr::Neg(Box::new(Expr::Integer(2_147_483_648))) };
+        assert!(emit_object(&function).is_ok());
+    }
+    #[test]
+    fn lowers_shift_expression() {
+        let function = Function {
+            name: "main".to_owned(),
+            return_value: Expr::Shr(
+                Box::new(Expr::Shl(Box::new(Expr::Integer(21)), Box::new(Expr::Integer(2)))),
+                Box::new(Expr::Integer(1)),
+            ),
+        };
         assert!(emit_object(&function).is_ok());
     }
     #[test]
