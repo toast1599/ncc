@@ -4,7 +4,7 @@ use anyhow::{bail, Context, Result};
 enum Token {
     Int, Void, Return, Ident(String), Number(i64),
     Plus, Minus, Star, Slash, Percent, Bang, Tilde,
-    Amp, Caret, Pipe,
+    Amp, AmpAmp, Caret, Pipe, PipePipe,
     EqEq, NotEq, Lt, Le, Gt, Ge, Shl, Shr,
     LParen, RParen, LBrace, RBrace, Semi, Eof,
 }
@@ -19,6 +19,7 @@ pub enum Expr {
     Lt(Box<Expr>, Box<Expr>), Le(Box<Expr>, Box<Expr>),
     Gt(Box<Expr>, Box<Expr>), Ge(Box<Expr>, Box<Expr>),
     BitAnd(Box<Expr>, Box<Expr>), BitXor(Box<Expr>, Box<Expr>), BitOr(Box<Expr>, Box<Expr>),
+    LogicalAnd(Box<Expr>, Box<Expr>), LogicalOr(Box<Expr>, Box<Expr>),
 }
 
 pub struct Function { pub name: String, pub return_value: Expr }
@@ -45,8 +46,18 @@ impl Parser {
         Ok(())
     }
 
-    fn parse_expr(&mut self) -> Result<Expr> { self.parse_bit_or() }
+    fn parse_expr(&mut self) -> Result<Expr> { self.parse_logical_or() }
 
+    fn parse_logical_or(&mut self) -> Result<Expr> {
+        let mut e = self.parse_logical_and()?;
+        while matches!(self.peek(), Token::PipePipe) { self.bump(); e = Expr::LogicalOr(Box::new(e), Box::new(self.parse_logical_and()?)); }
+        Ok(e)
+    }
+    fn parse_logical_and(&mut self) -> Result<Expr> {
+        let mut e = self.parse_bit_or()?;
+        while matches!(self.peek(), Token::AmpAmp) { self.bump(); e = Expr::LogicalAnd(Box::new(e), Box::new(self.parse_bit_or()?)); }
+        Ok(e)
+    }
     fn parse_bit_or(&mut self) -> Result<Expr> {
         let mut e = self.parse_bit_xor()?;
         while matches!(self.peek(), Token::Pipe) { self.bump(); e = Expr::BitOr(Box::new(e), Box::new(self.parse_bit_xor()?)); }
@@ -150,6 +161,8 @@ fn lex(source: &str) -> Result<Vec<Token>> {
             b'>' if b.get(i + 1) == Some(&b'=') => { out.push(Token::Ge); i += 2; }
             b'<' if b.get(i + 1) == Some(&b'<') => { out.push(Token::Shl); i += 2; }
             b'>' if b.get(i + 1) == Some(&b'>') => { out.push(Token::Shr); i += 2; }
+            b'&' if b.get(i + 1) == Some(&b'&') => { out.push(Token::AmpAmp); i += 2; }
+            b'|' if b.get(i + 1) == Some(&b'|') => { out.push(Token::PipePipe); i += 2; }
             b'!' => { out.push(Token::Bang); i += 1; }
             b'~' => { out.push(Token::Tilde); i += 1; }
             b'&' => { out.push(Token::Amp); i += 1; }
@@ -203,6 +216,13 @@ mod tests {
         assert!(matches!(f.return_value, Expr::BitOr(_, _)));
         let Expr::BitOr(_, rhs) = f.return_value else { unreachable!() };
         assert!(matches!(*rhs, Expr::BitXor(_, _)));
+    }
+    #[test]
+    fn logical_precedence_is_c_like() {
+        let f = parse("int main(void) { return 1 || 2 && 3 | 4; }").unwrap();
+        assert!(matches!(f.return_value, Expr::LogicalOr(_, _)));
+        let Expr::LogicalOr(_, rhs) = f.return_value else { unreachable!() };
+        assert!(matches!(*rhs, Expr::LogicalAnd(_, _)));
     }
     #[test]
     fn ignores_line_and_block_comments() {
