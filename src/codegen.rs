@@ -37,10 +37,7 @@ pub fn emit_object(function: &Function) -> Result<Vec<u8>> {
     let id = module.declare_function(&function.name, Linkage::Export, &ctx.func.signature)?;
     module.define_function(id, &mut ctx)?;
     module.clear_context(&mut ctx);
-    module
-        .finish()
-        .emit()
-        .context("failed to emit object file")
+    module.finish().emit().context("failed to emit object file")
 }
 
 fn lower_expr(expr: &Expr, b: &mut FunctionBuilder<'_>) -> Result<Value> {
@@ -51,25 +48,16 @@ fn lower_expr(expr: &Expr, b: &mut FunctionBuilder<'_>) -> Result<Value> {
             }
             b.ins().iconst(types::I32, *v)
         }
-        // The magnitude of i32::MIN is one greater than i32::MAX. Accept it when
-        // written in the conventional C spelling, while continuing to reject the
-        // positive value 2147483648 in this intentionally i32-only subset.
         Expr::Neg(x) if matches!(x.as_ref(), Expr::Integer(2_147_483_648)) => {
             b.ins().iconst(types::I32, i64::from(i32::MIN))
         }
-        Expr::Neg(x) => {
-            let v = lower_expr(x, b)?;
-            b.ins().ineg(v)
-        }
+        Expr::Neg(x) => { let v = lower_expr(x, b)?; b.ins().ineg(v) }
         Expr::Not(x) => {
             let v = lower_expr(x, b)?;
             let is_zero = b.ins().icmp_imm(IntCC::Equal, v, 0);
             b.ins().uextend(types::I32, is_zero)
         }
-        Expr::BitNot(x) => {
-            let v = lower_expr(x, b)?;
-            b.ins().bnot(v)
-        }
+        Expr::BitNot(x) => { let v = lower_expr(x, b)?; b.ins().bnot(v) }
         Expr::Add(l, r) => bin(l, r, b, |b, l, r| b.ins().iadd(l, r))?,
         Expr::Sub(l, r) => bin(l, r, b, |b, l, r| b.ins().isub(l, r))?,
         Expr::Mul(l, r) => bin(l, r, b, |b, l, r| b.ins().imul(l, r))?,
@@ -81,6 +69,9 @@ fn lower_expr(expr: &Expr, b: &mut FunctionBuilder<'_>) -> Result<Value> {
         Expr::Le(l, r) => cmp(IntCC::SignedLessThanOrEqual, l, r, b)?,
         Expr::Gt(l, r) => cmp(IntCC::SignedGreaterThan, l, r, b)?,
         Expr::Ge(l, r) => cmp(IntCC::SignedGreaterThanOrEqual, l, r, b)?,
+        Expr::BitAnd(l, r) => bin(l, r, b, |b, l, r| b.ins().band(l, r))?,
+        Expr::BitXor(l, r) => bin(l, r, b, |b, l, r| b.ins().bxor(l, r))?,
+        Expr::BitOr(l, r) => bin(l, r, b, |b, l, r| b.ins().bor(l, r))?,
     })
 }
 
@@ -105,22 +96,25 @@ fn cmp(cc: IntCC, l: &Expr, r: &Expr, b: &mut FunctionBuilder<'_>) -> Result<Val
 #[cfg(test)]
 mod tests {
     use super::*;
-
     #[test]
     fn rejects_integer_constants_outside_supported_int_range() {
-        let function = Function {
-            name: "main".to_owned(),
-            return_value: Expr::Integer(i64::from(i32::MAX) + 1),
-        };
+        let function = Function { name: "main".to_owned(), return_value: Expr::Integer(i64::from(i32::MAX) + 1) };
         let error = emit_object(&function).unwrap_err().to_string();
         assert!(error.contains("supported 32-bit int range"));
     }
-
     #[test]
     fn accepts_minimum_signed_32_bit_integer() {
+        let function = Function { name: "main".to_owned(), return_value: Expr::Neg(Box::new(Expr::Integer(2_147_483_648))) };
+        assert!(emit_object(&function).is_ok());
+    }
+    #[test]
+    fn lowers_binary_bitwise_expression() {
         let function = Function {
             name: "main".to_owned(),
-            return_value: Expr::Neg(Box::new(Expr::Integer(2_147_483_648))),
+            return_value: Expr::BitOr(
+                Box::new(Expr::Integer(32)),
+                Box::new(Expr::BitXor(Box::new(Expr::Integer(8)), Box::new(Expr::Integer(2)))),
+            ),
         };
         assert!(emit_object(&function).is_ok());
     }
