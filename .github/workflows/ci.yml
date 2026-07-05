@@ -135,3 +135,7 @@ jobs:
           run_case bitwise_complement_zero '~0 + 43' 42
           run_case double_bitwise_complement '~~42' 42
           run_case mixed_unary '!~0' 0
+          run_case bitwise_and '47 & 58' 42
+          run_case bitwise_xor '40 ^ 2' 42
+          run_case bitwise_or '40 | 2' 42
+          run_case bitwise_precedence '32 | 8 ^ 3 & 6' 42
