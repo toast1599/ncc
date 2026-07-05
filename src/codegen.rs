@@ -51,6 +51,12 @@ fn lower_expr(expr: &Expr, b: &mut FunctionBuilder<'_>) -> Result<Value> {
             }
             b.ins().iconst(types::I32, *v)
         }
+        // The magnitude of i32::MIN is one greater than i32::MAX. Accept it when
+        // written in the conventional C spelling, while continuing to reject the
+        // positive value 2147483648 in this intentionally i32-only subset.
+        Expr::Neg(x) if matches!(x.as_ref(), Expr::Integer(2_147_483_648)) => {
+            b.ins().iconst(types::I32, i64::from(i32::MIN))
+        }
         Expr::Neg(x) => {
             let v = lower_expr(x, b)?;
             b.ins().ineg(v)
@@ -108,5 +114,14 @@ mod tests {
         };
         let error = emit_object(&function).unwrap_err().to_string();
         assert!(error.contains("supported 32-bit int range"));
+    }
+
+    #[test]
+    fn accepts_minimum_signed_32_bit_integer() {
+        let function = Function {
+            name: "main".to_owned(),
+            return_value: Expr::Neg(Box::new(Expr::Integer(2_147_483_648))),
+        };
+        assert!(emit_object(&function).is_ok());
     }
 }
